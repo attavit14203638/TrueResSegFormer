@@ -2,6 +2,32 @@
 
 This guide provides a comprehensive overview of how to use the command-line interface (CLI) provided by `main.py` to run all experiments, evaluations, and predictions from our research paper.
 
+## Prerequisites
+
+Before using this CLI guide, make sure you have:
+
+1. **Completed installation** as described in the [README.md](README.md#installation)
+2. **Verified your setup** using the [Quick Test](README.md#quick-test) section
+3. **Activated your environment**: `conda activate trueressegformer` or `source venv/bin/activate`
+
+## Quick Reference
+
+**Most Common Commands:**
+
+```bash
+# Quick test your installation
+python main.py inspect_dataset --num_samples 3 --save_dir ./test_output
+
+# Train the best model from our paper
+python main.py train --class_weights_enabled --apply_loss_at_original_resolution --output_dir ./best_model
+
+# Evaluate a trained model  
+python main.py evaluate --config_path ./best_model/effective_train_config.json --model_path ./best_model/final_model
+
+# Make predictions on new images
+python main.py predict --config_path ./best_model/effective_train_config.json --image_paths ./your_image.png
+```
+
 ## 1. Main Entry Point
 
 All commands are initiated through the `main.py` script. It uses a subcommand structure for different operations. You can always get help for any command or subcommand by using the `-h` or `--help` flag.
@@ -89,6 +115,18 @@ python main.py train \
     --dataset_name restor/tcd \
     --num_epochs 50 \
     --learning_rate 1e-5
+```
+
+#### Example 4: Quick Test Training (Fast)
+For testing your setup with a short training run:
+
+```bash
+python main.py train \
+    --output_dir ./quick_test \
+    --num_epochs 2 \
+    --train_batch_size 2 \
+    --learning_rate 1e-5 \
+    --mixed_precision
 ```
 
 ---
@@ -187,4 +225,37 @@ python main.py inspect_dataset \
     --num_samples 10 \
     --save_dir ./dataset_inspection_output \
     --seed 42
-``` 
+```
+
+---
+
+## 6. Tips and Best Practices
+
+### Memory Management
+```bash
+# For limited GPU memory, use smaller batch sizes with gradient accumulation:
+python main.py train --train_batch_size 1 --gradient_accumulation_steps 8
+
+# Enable mixed precision to save memory:
+python main.py train --mixed_precision
+```
+
+### Monitoring Training
+```bash
+# Monitor with TensorBoard (logs saved automatically):
+tensorboard --logdir ./outputs/your_model_name/tensorboard_logs
+
+# Check training progress:
+tail -f ./outputs/your_model_name/training.log
+```
+
+### Quick Experiments
+```bash
+# Use smaller model for faster testing:
+python main.py train --model_name nvidia/mit-b0
+
+# Shorter training for quick tests:
+python main.py train --num_epochs 5
+```
+
+For more detailed troubleshooting, see the [Troubleshooting section](README.md#troubleshooting) in the README. 

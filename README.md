@@ -43,18 +43,101 @@ This repository allows you to train and evaluate all configurations from our pap
 - **🧮 Tiled Inference**: Support for processing large satellite/aerial images.
 - **📊 Reproducible Research**: A complete experimental pipeline with detailed documentation.
 
+## 🖥️ System Requirements
+
+- **Python**: 3.8+ (tested with 3.8, 3.9, 3.10)
+- **Operating System**: Linux, macOS, or Windows
+- **Hardware**: 
+  - **GPU**: NVIDIA GPU with 8GB+ VRAM (recommended for training)
+  - **CPU**: 8+ cores (for CPU-only inference)
+  - **RAM**: 16GB+ recommended
+- **CUDA**: 11.8+ (if using GPU)
+
+### ⏱️ Expected Training Times
+
+| Configuration | GPU (V100) | GPU (RTX 4090) | CPU Only |
+|---|---|---|---|
+| 50 epochs (full paper results) | ~6-8 hours | ~4-6 hours | ~2-3 days |
+| 10 epochs (quick experiment) | ~1.5 hours | ~1 hour | ~8-12 hours |
+| 5 epochs (fast test) | ~45 minutes | ~30 minutes | ~4-6 hours |
+
 ## 🚀 Quick Start
 
 ### Installation
+
+**Step 1: Clone the Repository**
 
 ```bash
 # Clone the repository
 git clone https://github.com/attavit14203638/TrueResSegFormer.git
 cd TrueResSegFormer
+```
 
-# Install dependencies
+**Step 2: Set Up Environment**
+
+**Option 1: Using conda (Recommended for stability)**
+
+```bash
+# Create a new conda environment
+conda create -n trueressegformer python=3.9
+conda activate trueressegformer
+
+# Install PyTorch with CUDA support (adjust CUDA version as needed)
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+
+# Install other dependencies
 pip install -r requirements.txt
 ```
+
+**Option 2: Using pip with virtual environment**
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install dependencies (includes PyTorch)
+pip install -r requirements.txt
+```
+
+**Option 3: CPU-only installation**
+
+```bash
+# If you only have CPU or want to test without GPU
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+```
+
+### 🧪 Quick Test
+
+Verify your installation works correctly:
+
+```bash
+# Test 1: Check dataset access and basic imports
+python -c "
+from datasets import load_dataset
+import torch
+from transformers import SegformerForSemanticSegmentation
+print('✅ All dependencies installed correctly!')
+print(f'PyTorch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+"
+
+# Test 2: Quick dataset inspection (should work out-of-the-box)
+python main.py inspect_dataset --num_samples 3 --save_dir ./test_output
+
+# Test 3: Check if training can start (stops after first batch)
+python main.py train \
+    --output_dir ./quick_test \
+    --num_epochs 1 \
+    --train_batch_size 1 \
+    --learning_rate 1e-5
+```
+
+If all tests pass, you're ready to go! 🎉
 
 ### Training Models
 
@@ -102,6 +185,77 @@ python main.py predict \
     --image_paths ./path/to/image.png \
     --output_dir ./predictions \
     --visualize --show_confidence
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues and Solutions
+
+**1. PyTorch/CUDA Installation Issues**
+```bash
+# Check CUDA version
+nvidia-smi
+
+# Install PyTorch with specific CUDA version
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+**2. Dataset Access Issues**
+```bash
+# If you get dataset loading errors
+export HF_DATASETS_CACHE="/path/to/cache"  # Set custom cache location
+huggingface-cli login  # Login if needed for dataset access
+```
+
+**3. Memory Issues**
+```bash
+# For GPU out of memory errors, reduce batch size:
+python main.py train --train_batch_size 1 --gradient_accumulation_steps 8
+
+# For CPU training (slower but works with limited GPU memory):
+python main.py train --device cpu --train_batch_size 2
+```
+
+**4. Dependency Conflicts**
+```bash
+# If you encounter version conflicts, try:
+pip install --force-reinstall -r requirements.txt
+
+# Or create a fresh environment:
+conda create -n fresh_env python=3.9
+conda activate fresh_env
+# Then install as above
+```
+
+**5. Slow Training**
+```bash
+# Enable mixed precision for faster training:
+python main.py train --mixed_precision
+
+# Use smaller model for quick testing:
+python main.py train --model_name nvidia/mit-b0  # instead of mit-b5
+```
+
+### Getting Help
+
+- **Check the logs**: Training logs are saved in `{output_dir}/training.log`
+- **Use CLI help**: `python main.py train --help` for all available options
+- **Reduce complexity**: Start with smaller models/datasets to test your setup
+- **Hardware monitoring**: Use `nvidia-smi` to monitor GPU usage during training
+
+### Expected File Structure After Training
+
+After a successful training run, you should see:
+```
+outputs/segformer_b5_cw_full_res/
+├── effective_train_config.json
+├── final_model/
+│   ├── config.json
+│   ├── model.safetensors
+│   └── ...
+├── best_checkpoint/
+├── training.log
+└── tensorboard_logs/
 ```
 
 ## 📁 Code Structure
