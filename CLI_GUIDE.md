@@ -1,4 +1,4 @@
-# TrueResSegFormer: Command-Line Interface (CLI) Guide
+Command-Line Interface (CLI) Guide
 
 This guide provides a comprehensive overview of how to use the command-line interface (CLI) provided by `main.py` to run all experiments, evaluations, and predictions from our research paper.
 
