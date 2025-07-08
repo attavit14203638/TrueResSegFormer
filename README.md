@@ -1,3 +1,12 @@
+# TrueResSegFormer: Optimizing SegFormer for Tree Crown Delineation
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Paper](https://img.shields.io/badge/paper-ACPR%202025-red.svg)](link-to-paper-when-available)
+[![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/attavit14203638)
+
+**🏆 State-of-the-Art Results: Boundary IoU 0.6201 on OAM-TCD Dataset**
+
 # TCD-SegFormer: Tree Crown Delineation with TrueResSegformer
 
 This repository contains a state-of-the-art implementation for Tree Crown Delineation (TCD) using our enhanced TrueResSegformer architecture. The codebase provides a complete pipeline for training, evaluating, and deploying models for identifying and delineating individual tree crowns in aerial or satellite imagery with superior boundary accuracy.
