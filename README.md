@@ -7,8 +7,6 @@
 
 **🏆 State-of-the-Art Results: Boundary IoU 0.6201 on OAM-TCD Dataset**
 
-# TCD-SegFormer: Tree Crown Delineation with TrueResSegformer
-
 This repository contains a state-of-the-art implementation for Tree Crown Delineation (TCD) using our enhanced TrueResSegformer architecture. The codebase provides a complete pipeline for training, evaluating, and deploying models for identifying and delineating individual tree crowns in aerial or satellite imagery with superior boundary accuracy.
 
 ## Key Innovations
