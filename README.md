@@ -123,7 +123,6 @@ The codebase is organized into modular components for clarity and reproducibilit
 | `weights.py` | Class weight computation for imbalanced datasets. |
 | `image_utils.py` | Helper functions for image manipulation (tiling, stitching). |
 | `tensorboard_utils.py` | Utilities for logging metrics to TensorBoard. |
-| `upload_to_hub.py` | Script for uploading trained models to Hugging Face Hub. |
 | `utils.py` | General helper functions (e.g., seeding, logging setup). |
 | `exceptions.py` | Custom exception hierarchy for robust error handling. |
 | `inspect_dataset.py`| Script to visualize and inspect dataset samples. |
