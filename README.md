@@ -1,205 +1,151 @@
-# TrueResSegFormer: Optimizing SegFormer for Tree Crown Delineation
+# Empirical Insights into Optimizing SegFormer for High-Fidelity Tree Crown Delineation
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Paper](https://img.shields.io/badge/paper-ACPR%202025-red.svg)](link-to-paper-when-available)
+[![Paper](https://img.shields.io/badge/paper-ACPR%202025-red.svg)](https://github.com/attavit14203638/TrueResSegFormer)
 [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/attavit14203638)
 
-**🏆 State-of-the-Art Results: Boundary IoU 0.6201 on OAM-TCD Dataset**
+**🏆 State-of-the-Art Results: Optimized Standard SegFormer achieves Boundary IoU 0.6201 on OAM-TCD Dataset**
 
-This repository contains a state-of-the-art implementation for Tree Crown Delineation (TCD) using our enhanced TrueResSegformer architecture. The codebase provides a complete pipeline for training, evaluating, and deploying models for identifying and delineating individual tree crowns in aerial or satellite imagery with superior boundary accuracy.
+This repository contains the official codebase for our ACPR 2025 paper, "Empirical Insights into Optimizing SegFormer for High-Fidelity Tree Crown Delineation." It provides a comprehensive investigation into optimizing SegFormer-based architectures, presenting empirical evidence that **training strategy is more critical than architectural modifications** for achieving superior boundary delineation. 
 
-## Key Innovations
+The codebase includes our implementations for both standard SegFormer optimizations and the `TrueResSegFormer` architectural variant, allowing for full reproduction of our comparative analysis.
 
-- **TrueResSegformer Architecture**: Our enhanced SegFormer variant that produces segmentation maps at the full resolution of input images, improving boundary delineation without significantly increasing model complexity
-- **Multi-Resolution Processing**: Supports processing of both high and low resolution imagery with detailed boundary preservation
-- **Weighted Loss Strategy**: Adaptive class weighting to address severe imbalance in tree crown segmentation tasks
+## 🔬 Key Research Findings
 
-## Features
+Our comprehensive study reveals:
 
-- **Unified Pipeline**: Centralized training, evaluation, and prediction operations
-- **Robust Dataset Handling**: Consistent dataset processing with error detection and recovery
-- **Optimization Techniques**: Mixed precision training, gradient accumulation, and class weighting
-- **Comprehensive Visualization**: Tools for dataset inspection, prediction visualization, confidence maps, and performance analysis
-- **Tiled Inference**: Support for processing large satellite/aerial images through tiling and stitching
+- **🥇 Training Strategy Dominance**: An optimized standard SegFormer with class weighting and full-resolution (H×W) loss supervision achieves a **state-of-the-art Boundary IoU of 0.6201** on the OAM-TCD dataset.
+- **📊 Architectural Analysis**: The `TrueResSegFormer` architectural variant (B-IoU: 0.5892), while an insightful exploration, is outperformed by an appropriately optimized standard SegFormer.
+- **🎯 Critical Factors**: The combination of **external full-resolution supervision** (upsampling logits before loss calculation) and **class weighting** proves to be the most effective strategy.
+- **⚡ Practical Impact**: Our findings suggest that methodical optimization of existing architectures offers a more direct path to performance gains than pursuing isolated architectural changes for this task.
 
-## Getting Started
+## 🛠️ Experimental Configurations Implemented
+
+This repository allows you to train and evaluate all configurations from our paper:
+
+#### Standard SegFormer Variants
+- **Baseline**: Standard SegFormer with H/4 loss.
+- **Class Weighted**: Standard SegFormer + class weighting.
+- **Full-Resolution Loss**: Standard SegFormer + external H×W loss supervision.
+- **🏆 Optimized (Best)**: Standard SegFormer + class weighting + H×W loss (**B-IoU: 0.6201**).
+
+#### TrueResSegFormer Architectural Variant
+- **TrueResSegFormer**: Internal H×W logit upsampling architecture.
+- **TrueResSegFormer + CW**: The above with class weighting (B-IoU: 0.5892).
+
+## ✨ Features
+
+- **🔬 Comparative Pipeline**: Systematically train and evaluate multiple SegFormer optimization strategies.
+- **📈 Advanced Metrics**: Includes Boundary IoU (`B-IoU`) evaluation for precise boundary assessment.
+- **⚖️ Class Imbalance Handling**: Integrated weighted loss strategies.
+- **🖼️ Rich Visualization**: Tools for error analysis, boundary comparison, and prediction visualization.
+- **🧮 Tiled Inference**: Support for processing large satellite/aerial images.
+- **📊 Reproducible Research**: A complete experimental pipeline with detailed documentation.
+
+## 🚀 Quick Start
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/tcd-segformer.git
-cd tcd-segformer
+git clone https://github.com/attavit14203638/TrueResSegFormer.git
+cd TrueResSegFormer
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### Command-Line Interface (CLI)
+### Training Models
 
-The primary way to interact with the project is through the `main.py` script using subcommands:
-
-**1. Training a Model:**
+**1. Reproduce Best Results (Optimized Standard SegFormer):**
 
 ```bash
-# Basic training with default config values (if applicable)
-python main.py train --output_dir ./training_output
-
-# Training with specific parameters (overriding defaults or config file)
+# Train the state-of-the-art configuration (Std. SegFormer + CW + HxW Loss)
 python main.py train \
     --dataset_name restor/tcd \
-    --model_name nvidia/segformer-b0-finetuned-ade-512-512 \
-    --output_dir ./my_trained_model \
-    --num_epochs 15 \
-    --learning_rate 6e-5 \
-    --train_batch_size 4 \
-    --mixed_precision
-
-# Training using a base config file and overriding some parameters
-python main.py train --config_path ./configs/base_config.json --learning_rate 7e-5 --output_dir ./tuned_model
+    --model_name nvidia/mit-b5 \
+    --output_dir ./outputs/segformer_b5_cw_full_res \
+    --num_epochs 50 \
+    --learning_rate 1e-5 \
+    --class_weights_enabled \
+    --apply_loss_at_original_resolution
 ```
-*Use `python main.py train --help` for all options.*
 
-**2. Making Predictions:**
+**2. Train TrueResSegFormer for Comparison:**
 
 ```bash
-# Predict on a single image using a trained model and its config
-python main.py predict \
-    --config_path ./my_trained_model/effective_train_config.json \
-    --model_path ./my_trained_model/final_model \
-    --image_paths ./path/to/your/image.png \
-    --output_dir ./prediction_results
-
-# Predict on multiple images with visualization and confidence maps
-python main.py predict \
-    --config_path ./my_trained_model/effective_train_config.json \
-    --model_path ./my_trained_model/final_model \
-    --image_paths ./images/img1.tif ./images/img2.tif \
-    --output_dir ./prediction_results_batch \
-    --visualize --show_confidence
+# Train the TrueResSegFormer architectural variant
+python main.py train \
+    --dataset_name restor/tcd \
+    --model_name nvidia/mit-b5 \
+    --output_dir ./outputs/TrueResSegformer_b5_cw \
+    --use_true_res_segformer \
+    --class_weights_enabled \
+    --num_epochs 50 \
+    --learning_rate 1e-5
 ```
-*Use `python main.py predict --help` for all options.*
 
-**3. Evaluating a Model:**
+### Evaluation and Prediction
 
 ```bash
-# Evaluate a trained model using its config
+# Evaluate any trained model
 python main.py evaluate \
-    --config_path ./my_trained_model/effective_train_config.json \
-    --model_path ./my_trained_model/final_model \
+    --config_path ./outputs/segformer_b5_cw_full_res/effective_train_config.json \
+    --model_path ./outputs/segformer_b5_cw_full_res/final_model \
     --output_dir ./evaluation_results
 
-# Evaluate with specific evaluation parameters
-python main.py evaluate \
-    --config_path ./my_trained_model/effective_train_config.json \
-    --model_path ./my_trained_model/final_model \
-    --output_dir ./evaluation_results_custom \
-    --eval_batch_size 32 \
-    --no-visualize_worst
-```
-*Use `python main.py evaluate --help` for all options.*
-
-### Training a Model (Python API)
-
-```python
-from config import Config
-from pipeline import run_training_pipeline
-
-# Create configuration
-config = Config({
-    "dataset_name": "restor/tcd",
-    "model_name": "nvidia/segformer-b0-finetuned-ade-512-512",
-    "output_dir": "./outputs",
-    "num_epochs": 10,
-    "learning_rate": 1e-4,
-    "train_batch_size": 8
-})
-
-# Run training pipeline
-results = run_training_pipeline(config=config)
+# Make predictions on new images
+python main.py predict \
+    --config_path ./outputs/segformer_b5_cw_full_res/effective_train_config.json \
+    --model_path ./outputs/segformer_b5_cw_full_res/final_model \
+    --image_paths ./path/to/image.png \
+    --output_dir ./predictions \
+    --visualize --show_confidence
 ```
 
-### Interactive Training
-
-Use the `tcd_segformer_training_refactored.ipynb` notebook for interactive training and experimentation.
-
-## Code Structure
-
-The codebase is organized into modular components with clear separation of concerns:
+## 📁 Code Structure
 
 | Module | Description |
 |--------|-------------|
-| `pipeline.py` | Centralized training and evaluation pipeline |
-| `config.py` | Configuration management with validation |
-| `dataset.py` | Dataset loading and processing with error handling |
-| `model.py` | SegFormer model with high-resolution output |
-| `metrics.py` | Evaluation metrics for segmentation tasks |
-| `checkpoint.py` | Checkpoint management with metadata |
-| `weights.py` | Class weight computation for handling imbalance |
-| `visualization.py` | Visualization tools for images and results |
-| `image_utils.py` | Image processing utilities |
-| `exceptions.py` | Custom exception hierarchy |
-| `main.py` | CLI entry point |
+| `pipeline.py` | Unified training/evaluation pipeline for all model variants. |
+| `model.py` | Implementations for SegFormer and the `TrueResSegformer` variant. |
+| `config.py` | Centralized configuration management and validation. |
+| `dataset.py` | OAM-TCD dataset loading and processing. |
+| `metrics.py` | Comprehensive evaluation metrics including Boundary IoU. |
+| `weights.py` | Class weight computation for imbalanced datasets. |
+| `visualization.py` | Tools for generating plots and visual comparisons. |
+| `main.py` | Command-line interface for running all experiments. |
 
-## Example Usage
 
-### Dataset Inspection
+## 🔬 Reproducing Paper Results
 
-```python
-from inspect_dataset import inspect_dataset_samples
+Our paper demonstrates the following performance hierarchy on the OAM-TCD test set:
 
-# Inspect dataset with visualization
-inspect_dataset_samples(
-    dataset_name="restor/tcd",
-    num_samples=5,
-    save_dir="./dataset_inspection",
-    seed=42
-)
-```
+| Configuration | IoU | F1-Score | **Boundary IoU** | Notes |
+|---------------|-----|----------|-------------------|-------|
+| **Std SegFormer + CW + H×W Loss** | **0.848** | **0.918** | **🏆 0.620** | **State-of-the-art** |
+| Std SegFormer + H×W Loss | 0.828 | 0.906 | 0.610 | Shows H×W loss impact |
+| Std SegFormer + CW + H/4 Loss | 0.844 | 0.916 | 0.606 | Strong baseline |
+| Std SegFormer (baseline) | 0.817 | 0.899 | 0.590 | Standard configuration |
+| TrueResSegFormer + CW | 0.838 | 0.912 | 0.589 | Architectural variant |
+| TrueResSegFormer (no CW) | 0.797 | 0.887 | 0.577 | Without optimization |
 
-### Prediction (Python API)
+You can reproduce any of these results by using the appropriate flags in the `main.py train` command.
 
-```python
-# Using the prediction pipeline function
-from config import Config
-from pipeline import run_prediction_pipeline
+## 📄 Citation
 
-# Load config used during training
-config = Config.load("./my_trained_model/effective_train_config.json")
+If you use this work in your research, please cite our ACPR 2025 paper:
 
-# Run prediction
-results = run_prediction_pipeline(
-    config=config,
-    image_paths=["./path/to/your/image.png", "./another/image.tif"],
-    model_path="./my_trained_model/final_model", # Optional, defaults based on config
-    output_dir="./api_predictions", # Optional, defaults based on config
-    visualize=True
-)
-
-# Access results (e.g., segmentation maps)
-# segmentation_map = results["segmentation_maps"][0]
-```
-
-### Uploading to Hugging Face Hub
-
-```bash
-python upload_to_hub.py --model_dir ./outputs/final_model --repo_id username/tcd-segformer-model
-```
-
-## Citation
-
-If you find this work useful for your research, please cite our paper:
-
-```
-@inproceedings{wilaiwongsakul2025tcd,
-  title={TCD-SegFormer: Enhancing Tree Crown Delineation with True-Resolution Segmentation},
-  author={Wilaiwongsakul, Attavit and Liang, Bin and Chen, Fang},
+```bibtex
+@inproceedings{wilaiwongsakul2025empirical,
+  title={Empirical Insights into Optimizing SegFormer for High-Fidelity Tree Crown Delineation},
+  author={Wilaiwongsakul, Attavit and Liang, Bin and Jia, Wenfeng and Chen, Fang},
   booktitle={Asian Conference on Pattern Recognition (ACPR)},
   year={2025}
 }
 ```
 
-## License
+## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
