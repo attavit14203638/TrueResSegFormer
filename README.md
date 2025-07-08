@@ -106,17 +106,32 @@ python main.py predict \
 
 ## 📁 Code Structure
 
+The codebase is organized into modular components for clarity and reproducibility:
+
 | Module | Description |
-|--------|-------------|
+|---|---|
+| **Core Modules** | |
 | `pipeline.py` | Unified training/evaluation pipeline for all model variants. |
 | `model.py` | Implementations for SegFormer and the `TrueResSegformer` variant. |
 | `config.py` | Centralized configuration management and validation. |
 | `dataset.py` | OAM-TCD dataset loading and processing. |
-| `metrics.py` | Comprehensive evaluation metrics including Boundary IoU. |
-| `weights.py` | Class weight computation for imbalanced datasets. |
-| `visualization.py` | Tools for generating plots and visual comparisons. |
 | `main.py` | Command-line interface for running all experiments. |
+| **Utilities & Helpers** | |
+| `metrics.py` | Comprehensive evaluation metrics including Boundary IoU. |
+| `visualization.py` | Tools for generating plots and visual comparisons. |
+| `checkpoint.py` | Manages saving and loading of model checkpoints. |
+| `weights.py` | Class weight computation for imbalanced datasets. |
+| `image_utils.py` | Helper functions for image manipulation (tiling, stitching). |
+| `tensorboard_utils.py` | Utilities for logging metrics to TensorBoard. |
+| `upload_to_hub.py` | Script for uploading trained models to Hugging Face Hub. |
+| `utils.py` | General helper functions (e.g., seeding, logging setup). |
+| `exceptions.py` | Custom exception hierarchy for robust error handling. |
+| `inspect_dataset.py`| Script to visualize and inspect dataset samples. |
 
+### 📓 Jupyter Notebooks
+
+- **`tcd_segformer_pipeline.ipynb`**: Provides a high-level, interactive way to run the training and evaluation pipeline, ideal for experimentation.
+- **`visualize_validation_predictions_enhanced.ipynb`**: A detailed notebook for visualizing and analyzing the qualitative results of model predictions on the validation set.
 
 ## 🔬 Reproducing Paper Results
 
