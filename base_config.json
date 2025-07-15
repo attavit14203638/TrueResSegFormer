@@ -1,0 +1,91 @@
+{
+    "dataset_name": "restor/tcd",
+    "image_size": null,
+    "validation_split": 0.1,
+    "model_name": "nvidia/mit-b5",
+    "use_true_res_segformer": false,
+    "interpolation_mode": "bilinear",
+    "interpolation_align_corners": false,
+    "output_dir": "./outputs_baseline_mit_b5",
+    "train_batch_size": 1,
+    "eval_batch_size": 2,
+    "num_epochs": 50,
+    "learning_rate": 1e-5,
+    "weight_decay": 0.01,
+    "num_workers": 8,
+    "seed": 42,
+    "gradient_accumulation_steps": 8,
+    "class_weights_enabled": false,
+    "apply_loss_at_original_resolution": true,
+    "gradient_checkpointing": true,
+    "mixed_precision": true,
+    "scheduler_type": "cosine_with_restarts",
+    "min_lr_scheduler": 1e-8,
+    "warmup_ratio": 0.1,
+    "num_cycles": 1.0,
+    "power": 1.0,
+    "dataloader_pin_memory": true,
+    "dataloader_persistent_workers": true,
+    "dataloader_prefetch_factor": 2,
+    "inference_tile_size": 1024,
+    "inference_tile_overlap": 320,
+    "augmentation": {
+        "apply": true,
+        "random_crop_size": 1024,
+        "h_flip_prob": 0.5,
+        "v_flip_prob": 0.5,
+        "rotation_degrees": 180,
+        "color_jitter_prob": 0.7,
+        "brightness": 0.3,
+        "contrast": 0.3,
+        "saturation": 0.3,
+        "hue": 0.1,
+        "gaussian_blur_prob": 0.5,
+        "gaussian_blur_kernel_size": [
+            3,
+            7
+        ],
+        "gaussian_blur_sigma": [
+            0.1,
+            2.0
+        ],
+        "atmospheric_prob": 0.2,
+        "shadow_prob": 0.2,
+        "visualize_augmented_samples": true,
+        "num_augmented_samples_to_visualize": 5
+    },
+    "training_tile_size": null,
+    "train_tile_stride": null,
+    "train_tile_random_offset": false,
+    "train_tile_threshold": 0.0,
+    "inference_cpu_offload": false,
+    "cross_validation": {
+        "enabled": false,
+        "num_folds": 5,
+        "save_best_model_per_fold": true,
+        "metrics_to_track": [
+            "f1_score_class_1",
+            "IoU_class_1"
+        ]
+    },
+    "logging_steps": 25,
+    "eval_steps": 250,
+    "save_steps": 1000,
+    "save_best_checkpoint": true,
+    "best_checkpoint_metric": "val_loss",
+    "best_checkpoint_monitor_mode": "min",
+    "max_checkpoints_to_keep": 3,
+    "resume_from_checkpoint": false,
+    "visualize_worst": true,
+    "num_worst_samples": 5,
+    "visualize_confidence_comparison": true,
+    "analyze_errors": true,
+    "id2label": {
+        "0": "__background__",
+        "1": "tree"
+    },
+    "label2id": {
+        "__background__": 0,
+        "tree": 1
+    }
+}

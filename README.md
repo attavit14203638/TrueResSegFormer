@@ -127,7 +127,7 @@ print(f'CUDA available: {torch.cuda.is_available()}')
 "
 
 # Test 2: Quick dataset inspection (should work out-of-the-box)
-python main.py inspect_dataset --num_samples 3 --save_dir ./test_output
+python main.py inspect --dataset_name restor/tcd --num_samples 3 --output_dir ./test_output
 
 # Test 3: Check if training can start (stops after first batch)
 python main.py train \

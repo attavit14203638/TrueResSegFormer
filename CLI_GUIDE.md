@@ -15,11 +15,13 @@ Before using this CLI guide, make sure you have:
 **Most Common Commands:**
 
 ```bash
-# Quick test your installation
-python main.py inspect_dataset --num_samples 3 --save_dir ./test_output
+# Quick test your installation (requires a base_config.json, see below)
+python main.py inspect --dataset_name restor/tcd --num_samples 3 --output_dir ./test_output
 
-# Train the best model from our paper
-python main.py train --class_weights_enabled --apply_loss_at_original_resolution --output_dir ./best_model
+# Train the best model from our paper (requires a base_config.json)
+# 1. First, modify base_config.json to set "apply_loss_at_original_resolution": true
+# 2. Then, run the train command:
+python main.py train --config_path ./base_config.json --compute_class_weights --output_dir ./best_model
 
 # Evaluate a trained model  
 python main.py evaluate --config_path ./best_model/effective_train_config.json --model_path ./best_model/final_model
@@ -41,7 +43,7 @@ python main.py --help
 - `train`: Train a new model configuration.
 - `evaluate`: Evaluate a trained model on the test set.
 - `predict`: Make predictions on new images using a trained model.
-- `inspect_dataset`: Visualize samples from the dataset.
+- `inspect`: Visualize samples from the dataset.
 
 ---
 
@@ -63,9 +65,10 @@ python main.py train --help
 | `--model_name` | | Base model from Hugging Face Hub. | `nvidia/mit-b5` |
 | `--output_dir` | | Directory to save checkpoints and results. | Required |
 | **Training Strategy** | | | |
-| `--use_true_res_segformer` | | Use the `TrueResSegformer` architectural variant. | `False` |
-| `--apply_loss_at_original_resolution`| | Upsample standard SegFormer logits to HxW for loss calculation. | `False` |
-| `--class_weights_enabled` | | Use weighted cross-entropy loss to handle class imbalance. | `False` |
+| `--config_path` | | Path to a base JSON configuration file. | Required |
+| `--use_true_res_segformer` | | Use the `TrueResSegformer` architectural variant (overrides config). | `False` |
+| `apply_loss_at_original_resolution`| (in config) | Upsample standard SegFormer logits to HxW for loss calculation. | `False` |
+| `--compute_class_weights` | | Use weighted cross-entropy loss to handle class imbalance (overrides config). | `False` |
 | **Hyperparameters** | | | |
 | `--num_epochs` | | Number of training epochs. | 10 |
 | `--learning_rate` | `-lr` | Initial learning rate for the optimizer. | `6e-5` |
@@ -80,14 +83,13 @@ python main.py train --help
 This command trains the best-performing model from the paper: an **optimized standard SegFormer**.
 
 ```bash
+# First, ensure 'base_config.json' has "apply_loss_at_original_resolution": true
 python main.py train \
+    --config_path ./base_config.json \
     --output_dir ./outputs/segformer_b5_cw_full_res \
-    --model_name nvidia/mit-b5 \
-    --dataset_name restor/tcd \
     --num_epochs 50 \
     --learning_rate 1e-5 \
-    --class_weights_enabled \
-    --apply_loss_at_original_resolution
+    --compute_class_weights
 ```
 *This configuration combines class weighting and full-resolution loss supervision on a standard SegFormer.*
 
@@ -95,9 +97,10 @@ python main.py train \
 This command trains the `TrueResSegformer` architecture with class weights for comparison.
 
 ```bash
+# First, ensure 'base_config.json' has "use_true_res_segformer": true
 python main.py train \
+    --config_path ./base_config.json \
     --output_dir ./outputs/TrueResSegformer_b5_cw \
-    --model_name nvidia/mit-b5 \
     --dataset_name restor/tcd \
     --num_epochs 50 \
     --learning_rate 1e-5 \

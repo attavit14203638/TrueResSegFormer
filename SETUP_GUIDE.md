@@ -14,7 +14,7 @@ Set these environment variables before running the notebooks:
 # For the main pipeline notebook
 export TEST_IMAGE_PATH="/path/to/your/test_image.tif"
 
-# For the visualization notebook
+# For the visualization notebook (sets the base directory for finding model checkpoints)
 export PROJECT_ROOT="/path/to/your/TrueResSegFormer_Release"
 ```
 
@@ -33,8 +33,12 @@ image_path = "/your/actual/path/to/test_image.tif"
 
 #### In `visualize_validation_predictions.ipynb`:
 ```python
-# Replace this line:
+# The use of `__file__` is unreliable in notebooks. Replace this line:
 project_root_abs = os.environ.get('PROJECT_ROOT', os.path.dirname(os.path.abspath(__file__)))
+
+# With a more reliable method if not using environment variables:
+import os
+project_root_abs = os.path.abspath('.') # Assumes you run the notebook from the project root
 
 # With your actual path:
 project_root_abs = "/your/actual/path/to/TrueResSegFormer_Release"
@@ -42,19 +46,15 @@ project_root_abs = "/your/actual/path/to/TrueResSegFormer_Release"
 
 ### 3. Directory Structure Setup
 
-The visualization notebook expects this directory structure:
+The visualization notebook needs to locate your trained model outputs. These are typically saved in the `output_dir` you specify during training. For example:
 
 ```
 TrueResSegFormer_Release/
-├── past_run_repository/
-│   ├── segformer_b5_cw_full_res/
-│   │   └── outputs_segformer_b5_cw_full_res/
-│   │       └── best_checkpoint/
-│   │           └── config.json
-│   └── segformer_b5_full_res/
-│       └── outputs_segformer_b5_full_res/
-│           └── best_checkpoint/
-│               └── pytorch_model.bin
+├── outputs/
+│   └── train_test/                <-- Your output_dir
+│       ├── best_checkpoint/         <-- Your model checkpoint
+│       ├── effective_train_config.json
+│       └── ...
 ├── tcd_segformer_pipeline.ipynb
 └── visualize_validation_predictions.ipynb
 ```
