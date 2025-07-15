@@ -437,11 +437,15 @@ def inspect_dataset_samples(dataset_or_dict=None, num_samples=3, save_dir="./dat
         dataset_dict = dataset_or_dict
         log_or_print(f"Using provided dataset for processing (no additional shuffling)", logger, logging.INFO, is_notebook)
             
-        # Create dataset - Pass the transform if it's the training split
-        # Create dataset - Pass the transform if it's the training split
-        dataset_transform = train_transform if split == "train" else None
-        # Pass the config object to the constructor
-        dataset = TCDDataset(dataset_dict, image_processor, config, split=split, transform=dataset_transform)
+        # Create the dataset - TCDDataset expects a dataset split, not the full DatasetDict
+        if split in dataset_dict:
+            dataset = TCDDataset(dataset_dict[split], image_processor, config, split=split)
+        else:
+            # If the requested split doesn't exist, use the first available split
+            first_split = next(iter(dataset_dict.keys()))
+            log_or_print(f"Split '{split}' not found in dataset. Using '{first_split}' instead.", 
+                       logger, logging.WARNING, is_notebook)
+            dataset = TCDDataset(dataset_dict[first_split], image_processor, config, split=first_split)
     else:
         # It's already a TCDDataset - it might already have a transform
         dataset = dataset_or_dict

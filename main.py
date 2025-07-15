@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
+import sys
+import logging
+import argparse
+import torch
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple, Union
+
 """
 Unified Command-Line Interface for TCD-SegFormer.
 
@@ -26,13 +34,26 @@ import sys # Added sys for exit
 
 # Import the centralized configuration and pipeline modules
 from config import Config, load_config_from_args, load_config_from_file_and_args
+from dataset import (
+    TCDDataset, 
+    load_and_shuffle_dataset, 
+    create_dataloaders, 
+    create_eval_dataloader,
+    create_augmentation_transform
+)
+
+from inspect_dataset import (
+    examine_raw_annotations, 
+    examine_dataset_statistics, 
+    inspect_dataset_samples, 
+    verify_training_tiling
+)
+from visualization import plot_augmented_samples
 from pipeline import run_training_pipeline, run_prediction_pipeline, evaluate_model
-from utils import setup_logging, log_or_print, get_logger # Added get_logger
-from dataset import load_and_shuffle_dataset, create_dataloaders, create_eval_dataloader, TCDDataset # Added TCDDataset
+from utils import setup_logging, log_or_print, get_logger
 from transformers import SegformerImageProcessor, SegformerForSemanticSegmentation
 from checkpoint import verify_checkpoint
 from exceptions import ConfigurationError, FileNotFoundError, DatasetError
-from inspect_dataset import examine_raw_annotations, examine_dataset_statistics, inspect_dataset_samples, verify_training_tiling # Import verify_training_tiling
 
 # --- Argument Parsing Setup ---
 
@@ -63,8 +84,9 @@ def setup_train_parser(subparsers, parent_parser):
     # Model parameters
     parser.add_argument("--model_name", type=str,
                         help="Base model name (overrides config)")
-    parser.add_argument("--output_dir", type=str,
-                        help="Directory for outputs (overrides config)")
+    # Using a different name to avoid conflict with parent parser
+    parser.add_argument("--train_output_dir", type=str, dest="train_output_dir",
+                        help="Directory for training outputs (overrides config and parent output_dir)")
 
     # Training parameters
     parser.add_argument("--train_batch_size", type=int,
@@ -77,8 +99,7 @@ def setup_train_parser(subparsers, parent_parser):
                         help="Learning rate (overrides config)")
     parser.add_argument("--weight_decay", type=float,
                         help="Weight decay (overrides config)")
-    parser.add_argument("--seed", type=int,
-                        help="Random seed (overrides config)")
+    # Seed is already defined in parent parser, no need to redefine it here
     parser.add_argument("--mixed_precision", action=argparse.BooleanOptionalAction,
                         help="Use mixed precision (overrides config)")
     parser.add_argument("--gradient_accumulation_steps", type=int,
@@ -122,9 +143,12 @@ def setup_train_parser(subparsers, parent_parser):
 def setup_predict_parser(subparsers, parent_parser):
     """Adds arguments for the 'predict' subcommand."""
     parser = subparsers.add_parser("predict", help="Make predictions with a trained model", parents=[parent_parser])
-    # Make config_path required for predict
-    parser.add_argument("--config_path", type=str, required=True,
-                        help="Path to the JSON config file from training output.")
+    # config_path is required for predict, so we'll modify the parent's argument
+    for action in parent_parser._actions:
+        if '--config_path' in action.option_strings:
+            action.required = True
+            action.help = "Path to the JSON config file from training output. (required for predict)"
+            break
     parser.add_argument("--image_paths", type=str, required=True, nargs='+',
                         help="Path(s) to input image(s).")
     parser.add_argument("--model_path", type=str, default=None,
@@ -142,9 +166,12 @@ def setup_predict_parser(subparsers, parent_parser):
 def setup_evaluate_parser(subparsers, parent_parser):
     """Adds arguments for the 'evaluate' subcommand."""
     parser = subparsers.add_parser("evaluate", help="Evaluate a trained model", parents=[parent_parser])
-    # Make config_path required for evaluate
-    parser.add_argument("--config_path", type=str, required=True,
-                        help="Path to the JSON config file from training output.")
+    # config_path is required for evaluate, so we'll modify the parent's argument
+    for action in parent_parser._actions:
+        if '--config_path' in action.option_strings:
+            action.required = True
+            action.help = "Path to the JSON config file from training output. (required for evaluate)"
+            break
     parser.add_argument("--model_path", type=str, required=True,
                         help="Path to the trained model directory to evaluate.")
     # Dataset/Eval specific overrides
@@ -169,30 +196,49 @@ def setup_evaluate_parser(subparsers, parent_parser):
 
 def setup_inspect_parser(subparsers, parent_parser):
     """Adds arguments for the 'inspect' subcommand."""
-    # Note: Inspect doesn't use config_path, but uses output_dir (save_dir) and seed from parent
-    parser = subparsers.add_parser("inspect", help="Inspect dataset samples", parents=[parent_parser])
+    # Create a new parent parser without the required config_path
+    inspect_parent_parser = argparse.ArgumentParser(add_help=False)
+    for action in parent_parser._actions:
+        if '--config_path' not in action.option_strings:
+            inspect_parent_parser._add_action(action)
+    
+    parser = subparsers.add_parser("inspect", help="Inspect dataset samples", parents=[inspect_parent_parser])
+    
+    # Add config_path as optional for inspect
+    parser.add_argument("--config_path", type=str, default=None,
+                      help="Optional path to a config file for additional settings")
+    
+    # Add required dataset name
     parser.add_argument("--dataset_name", type=str, required=True,
                       help="HuggingFace dataset name")
+    
+    # Add other inspect-specific arguments
     parser.add_argument("--num_samples", type=int, default=5,
                       help="Number of samples to inspect")
-    # Rename save_dir to output_dir to use parent parser's arg
-    parser.add_argument("--output_dir", type=str, default="./dataset_inspection",
-                      help="Directory to save inspection results")
+    
+    # Set default output directory
+    parser.set_defaults(output_dir="./dataset_inspection")
+    
+    # Add optional flags
     parser.add_argument("--enhanced_vis", action=argparse.BooleanOptionalAction, default=True,
                       help="Use enhanced visualization techniques")
     parser.add_argument("--analyze_statistics", action=argparse.BooleanOptionalAction, default=True,
                       help="Generate and save dataset statistics")
     parser.add_argument("--max_attempts", type=int, default=15,
                       help="Maximum number of attempts to find valid samples")
-
+    
+    # Set the handler function
     parser.set_defaults(func=handle_inspect)
 
 def setup_verify_tiling_parser(subparsers, parent_parser):
     """Adds arguments for the 'verify-tiling' subcommand."""
     parser = subparsers.add_parser("verify-tiling", help="Verify training tiling configuration", parents=[parent_parser])
-    # Make config_path required for verify-tiling
-    parser.add_argument("--config_path", type=str, required=True,
-                        help="Path to the JSON config file to verify.")
+    # config_path is required for verify-tiling, so we'll modify the parent's argument
+    for action in parent_parser._actions:
+        if '--config_path' in action.option_strings:
+            action.required = True
+            action.help = "Path to the JSON config file to verify. (required for verify-tiling)"
+            break
     parser.add_argument("--num_samples", type=int, default=5,
                         help="Number of samples to check.")
     parser.add_argument("--visualize", action=argparse.BooleanOptionalAction, default=False,
@@ -253,20 +299,26 @@ def handle_train(args: argparse.Namespace, logger: logging.Logger, config: Confi
     logger.info("Mode: Training")
     # Config is already loaded and merged
 
+    # Use train_output_dir if provided, otherwise fall back to output_dir
+    output_dir = args.train_output_dir if args.train_output_dir else config.get("output_dir", "./outputs")
+    
     # Ensure output directory exists
-    os.makedirs(config["output_dir"], exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Save the final effective config
-    config.save(os.path.join(config["output_dir"], "effective_train_config.json"))
-    logger.info(f"Effective training config saved to {config['output_dir']}/effective_train_config.json")
+    config.save(os.path.join(output_dir, "effective_train_config.json"))
+    logger.info(f"Effective training config saved to {output_dir}/effective_train_config.json")
 
+    # Update the output_dir in config to ensure consistency
+    config["output_dir"] = output_dir
+    
     results = run_training_pipeline(
         config=config,
         logger=logger,
         is_notebook=False # Assuming CLI is not a notebook
     )
-    logger.info(f"Training completed. Model saved to {results['model_dir']}")
-    logger.info(f"Final metrics: {results['metrics']}")
+    logger.info(f"Training completed. Model saved to {results.get('model_dir', 'unknown')}")
+    logger.info(f"Final metrics: {results.get('metrics', 'No metrics available')}")
 
 def handle_predict(args: argparse.Namespace, logger: logging.Logger, config: Config, device: torch.device):
     """Handles the 'predict' subcommand."""
@@ -305,12 +357,93 @@ def handle_predict(args: argparse.Namespace, logger: logging.Logger, config: Con
     )
     logger.info(f"Prediction completed. Outputs saved to {output_dir}")
 
-def handle_inspect(args: argparse.Namespace, logger: logging.Logger, config: Optional[Config], device: torch.device): # Added device (unused but consistent)
-    """Handles the 'inspect' subcommand."""
+def handle_evaluate(args: argparse.Namespace, logger: logging.Logger, config: Config, device: torch.device):
+    """
+    Handles the 'evaluate' subcommand.
+    """
+    try:
+        # Create output directory
+        output_dir = _determine_output_dir(args, config)
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Setup logging to file in the output directory
+        log_filename = f"evaluate_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file = os.path.join(output_dir, log_filename)
+        setup_logging(output_dir=output_dir, filename=log_filename, 
+                     log_level=logging.INFO, file_log_level=logging.DEBUG)
+        
+        logger.info("Starting model evaluation...")
+        logger.info(f"Model path: {args.model_path}")
+        logger.info(f"Output will be saved to: {output_dir}")
+        logger.info(f"Using device: {device}")
+        
+        # Load the model
+        logger.info("Loading model...")
+        model = _load_model_for_eval_predict(args.model_path, device, logger)
+        
+        # Load the dataset
+        logger.info("Loading dataset...")
+        dataset_dict = load_and_shuffle_dataset(
+            dataset_name=args.dataset_name or config.get("dataset_name"),
+            seed=args.seed or config.get("seed", 42)
+        )
+        
+        # Get the image processor
+        image_processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5")
+        
+        # Create dataloaders
+        logger.info("Creating dataloaders...")
+        eval_batch_size = args.eval_batch_size or config.get("eval_batch_size", 8)
+        num_workers = args.num_workers or config.get("num_workers", 4)
+        
+        _, eval_dataloader, _, _ = create_dataloaders(
+            dataset_dict=dataset_dict,
+            image_processor=image_processor,
+            config=config,
+            eval_batch_size=eval_batch_size,
+            num_workers=num_workers
+        )
+        
+        # Run evaluation
+        logger.info("Starting evaluation...")
+        metrics = evaluate_model(
+            model=model,
+            eval_dataloader=eval_dataloader,
+            device=device,
+            output_dir=output_dir,
+            visualize_worst=args.visualize_worst if args.visualize_worst is not None else config.get("visualize_worst", False),
+            num_worst_samples=args.num_worst_samples or config.get("num_worst_samples", 5),
+            analyze_errors=args.analyze_errors if args.analyze_errors is not None else config.get("analyze_errors", False),
+            visualize_confidence_comparison=args.visualize_confidence_comparison if args.visualize_confidence_comparison is not None else config.get("visualize_confidence_comparison", False)
+        )
+        
+        # Log metrics
+        logger.info("\nEvaluation Results:")
+        for key, value in metrics.items():
+            if isinstance(value, dict):
+                logger.info(f"{key}:")
+                for k, v in value.items():
+                    logger.info(f"  {k}: {v:.4f}")
+            else:
+                logger.info(f"{key}: {value:.4f}")
+        
+        logger.info("\nEvaluation completed successfully!")
+        logger.info(f"Results saved to: {output_dir}")
+        
+    except Exception as e:
+        logger.error(f"Error during evaluation: {e}", exc_info=True)
+        raise
+
+def handle_inspect(args: argparse.Namespace, logger: logging.Logger, config: Optional[Config], device: torch.device):
+    """
+    Handles the 'inspect' subcommand.
+    """
     logger.info("Mode: Dataset Inspection")
+    
     # Output directory is args.output_dir (renamed from save_dir)
-    output_dir = args.output_dir
+    output_dir = os.path.abspath(args.output_dir)
     os.makedirs(output_dir, exist_ok=True)
+    logger.info(f"Output directory: {output_dir}")
 
     # Set log level based on verbosity flag
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -320,180 +453,182 @@ def handle_inspect(args: argparse.Namespace, logger: logging.Logger, config: Opt
         start_time = time.time()
         logger.info(f"Starting dataset inspection for {args.dataset_name}...")
 
-        # Load dataset
-        try:
-            # Use seed from args (which defaults to parent parser's default or CLI override)
-            logger.info(f"Loading dataset {args.dataset_name} with seed {args.seed}...")
-            dataset_dict = load_and_shuffle_dataset(args.dataset_name, seed=args.seed)
-            logger.info(f"Dataset loaded successfully.")
-        except Exception as e:
-            logger.error(f"Failed to load dataset: {e}", exc_info=True)
-            return
-
-        # Examine raw annotations
-        logger.info("Examining raw annotations...")
-        raw_dir = os.path.join(output_dir, "raw_annotations")
-        os.makedirs(raw_dir, exist_ok=True)
+        # If config_path was provided, load the config
+        if args.config_path:
+            logger.info(f"Loading config from {args.config_path}")
+            try:
+                config = Config.load(args.config_path)
+                logger.info("Config loaded successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to load config from {args.config_path}: {e}")
+                logger.warning("Continuing with default configuration.")
+                config = None
+        else:
+            logger.info("No config file provided, using default settings.")
+            config = None
+        
+        # Setup logging to file in the output directory
+        log_filename = f"inspect_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file = os.path.join(output_dir, log_filename)
+        setup_logging(output_dir=output_dir, filename=log_filename, 
+                     log_level=logging.INFO, file_log_level=logging.DEBUG)
+        
+        logger.info(f"Starting dataset inspection for {args.dataset_name}")
+        logger.info(f"Output will be saved to: {output_dir}")
+        logger.info(f"Using device: {device}")
+        
+        # Create a default config if none provided
+        if config is None:
+            from config import Config
+            config = Config({
+                "augmentation": {
+                    "apply": True,
+                    "random_crop_size": [512, 512],
+                    "horizontal_flip": True,
+                    "vertical_flip": True,
+                    "rotation_range": 15,
+                    "brightness_range": [0.8, 1.2],
+                    "contrast_range": [0.8, 1.2],
+                    "saturation_range": [0.8, 1.2],
+                    "hue_range": [-0.1, 0.1],
+                    "normalize": {
+                        "mean": [0.485, 0.456, 0.406],
+                        "std": [0.229, 0.224, 0.225]
+                    }
+                },
+                "id2label": {0: "background", 1: "tree"},
+                "label2id": {"background": 0, "tree": 1},
+                "ignore_index": 255
+            })
+            logger.info("Using default configuration with augmentations enabled")
+        
+        # Load the dataset
+        logger.info(f"\nLoading dataset: {args.dataset_name}")
+        dataset_dict = load_and_shuffle_dataset(
+            dataset_name=args.dataset_name,
+            seed=args.seed
+        )
+        logger.info(f"Dataset loaded successfully. Available splits: {list(dataset_dict.keys())}")
+        
+        # 1. Examine raw annotations
+        logger.info("\n1. Examining raw annotations...")
+        raw_annots_dir = os.path.join(output_dir, "raw_annotations")
+        os.makedirs(raw_annots_dir, exist_ok=True)
+        
+        # Pass the dataset_dict to avoid reloading
         examine_raw_annotations(
             dataset_name=args.dataset_name,
             num_samples=args.num_samples,
-            save_dir=raw_dir,
+            save_dir=raw_annots_dir,
             seed=args.seed,
             enhanced_vis=args.enhanced_vis,
             dataset_dict=dataset_dict,
             logger=logger,
             is_notebook=False
         )
-        logger.info(f"Raw annotations examination complete. Results saved to {raw_dir}")
+        logger.info(f"Raw annotations inspection complete. Results saved to {raw_annots_dir}")
 
-        # Process dataset with image processor
-        logger.info("Creating image processor...")
-        # Use default processor settings for inspection
-        image_processor = SegformerImageProcessor()
-
-        # Create dataset using TCDDataset
-        logger.info("Creating dataset for inspection...")
-        train_dataset = TCDDataset(dataset_dict, image_processor, split="train")
-
-        # Inspect processed samples
-        logger.info("Inspecting processed samples...")
-        processed_dir = os.path.join(output_dir, "processed_samples")
-        os.makedirs(processed_dir, exist_ok=True)
+        # 2. Create and inspect the dataset with augmentations
+        logger.info("\n2. Creating and inspecting dataset with augmentations...")
+        # 3. Create dataset with augmentations for visualization
+        try:
+            # Create image processor
+            image_processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5")
+            logger.info("Using default image processor (nvidia/mit-b5).")
+            
+            # Create a config with augmentations enabled for training
+            aug_config = Config({"augmentation": {"apply": True, "p": 1.0}})
+            
+            # Create the training dataset with augmentations
+            train_dataset = TCDDataset(
+                dataset=dataset_dict["train"],
+                image_processor=image_processor,
+                config=aug_config,
+                split="train"
+            )
+            logger.info("Training dataset with augmentations created successfully.")
+            
+            # 4. Visualize augmented samples if transform is available
+            if hasattr(train_dataset, 'transform') and train_dataset.transform is not None:
+                logger.info("\n3. Visualizing augmented samples...")
+                aug_output_dir = os.path.join(output_dir, "augmented_samples")
+                os.makedirs(aug_output_dir, exist_ok=True)
+                
+                # Get a sample from the training dataset
+                sample = train_dataset[0]  # Get first sample
+                
+                # Visualize multiple augmented versions of the same sample
+                from inspect_dataset import plot_augmented_samples
+                plot_augmented_samples(
+                    original_sample={"image": sample["pixel_values"], "mask": sample["labels"]},
+                    transform=train_dataset.transform,
+                    num_augmented=4,
+                    save_path=os.path.join(aug_output_dir, "augmentation_examples.png")
+                )
+                logger.info(f"Augmentation examples saved to: {aug_output_dir}")
+            else:
+                logger.info("\n3. Skipping augmentation visualization - no transform available")
+            
+        except Exception as e:
+            logger.error(f"Failed to create training dataset or visualize augmentations: {e}")
+            logger.warning("Skipping augmentation visualization due to error.")
+            
+        # 5. Inspect dataset samples
+        logger.info("\n4. Inspecting dataset samples...")
+        inspect_output_dir = os.path.join(output_dir, "sample_inspections")
+        os.makedirs(inspect_output_dir, exist_ok=True)
+        
+        # Create a dataset without augmentations for inspection
         inspect_dataset_samples(
-            train_dataset,
+            dataset_or_dict=dataset_dict,
+            image_processor=image_processor,
+            save_dir=inspect_output_dir,
             num_samples=args.num_samples,
-            save_dir=processed_dir,
-            max_attempts=args.max_attempts,
             seed=args.seed,
             enhanced_vis=args.enhanced_vis,
-            logger=logger,
-            is_notebook=False
+            logger=logger
         )
-        logger.info(f"Processed samples inspection complete. Results saved to {processed_dir}")
+        logger.info(f"Sample inspections saved to: {inspect_output_dir}")
 
-        # Analyze dataset statistics if requested
-        if args.analyze_statistics:
-            logger.info("Analyzing dataset statistics...")
-            stats_dir = os.path.join(output_dir, "statistics")
-            os.makedirs(stats_dir, exist_ok=True)
+        # 5. Examine dataset statistics
+        logger.info("\n5. Examining dataset statistics...")
+        stats_output_dir = os.path.join(output_dir, "statistics")
+        os.makedirs(stats_output_dir, exist_ok=True)
+        
+        try:
+            # Create a dataset for statistics (without augmentations)
+            stats_dataset = TCDDataset(
+                dataset=dataset_dict["train"],
+                image_processor=image_processor,
+                config=config,
+                split="train"
+            )
+            
             stats = examine_dataset_statistics(
-                train_dataset,
-                num_samples=min(100, len(train_dataset)), # Use up to 100 samples for statistics
-                save_dir=stats_dir,
-                logger=logger,
-                is_notebook=False
+                dataset=stats_dataset,
+                save_dir=stats_output_dir,
+                num_samples=min(100, len(dataset_dict["train"])),
+                logger=logger
             )
-            logger.info(f"Dataset statistics analysis complete. Results saved to {stats_dir}")
-
-            # Log summary statistics
-            if "summary" in stats:
-                summary = stats["summary"]
-                logger.info("\nDataset Summary Statistics:")
-                for key, value in summary.items():
-                    if isinstance(value, float):
-                        logger.info(f"  {key}: {value:.2f}")
-                    else:
-                        logger.info(f"  {key}: {value}")
-
-        # Inspect validation samples if available
-        if "validation" in dataset_dict:
-            logger.info("Inspecting validation samples...")
-            val_dir = os.path.join(output_dir, "validation_samples")
-            os.makedirs(val_dir, exist_ok=True)
-            val_dataset = TCDDataset(dataset_dict, image_processor, split="validation")
-            inspect_dataset_samples(
-                val_dataset,
-                num_samples=min(3, len(val_dataset)),
-                save_dir=val_dir,
-                max_attempts=args.max_attempts,
-                seed=args.seed,
-                enhanced_vis=args.enhanced_vis,
-                logger=logger,
-                is_notebook=False
-            )
-            logger.info(f"Validation samples inspection complete. Results saved to {val_dir}")
-
-        elapsed_time = time.time() - start_time
-        logger.info(f"Dataset inspection completed in {elapsed_time:.2f} seconds.")
+            logger.info(f"Dataset statistics saved to: {stats_output_dir}")
+        except Exception as e:
+            logger.error(f"Error calculating dataset statistics: {e}", exc_info=True)
+            logger.warning("Skipping dataset statistics due to error.")
+        
+        logger.info("\nDataset inspection completed successfully!")
+        logger.info(f"All results saved to: {output_dir}")
 
     except Exception as e:
         logger.error(f"Error during dataset inspection: {e}", exc_info=True)
+        raise
 
-def handle_evaluate(args: argparse.Namespace, logger: logging.Logger, config: Config, device: torch.device):
-    """Handles the 'evaluate' subcommand."""
-    logger.info("Mode: Evaluation")
-    # Config is loaded
-
-    # Override config with CLI args where provided
-    # These checks ensure CLI args take precedence if they are not None
-    if args.dataset_name: config["dataset_name"] = args.dataset_name
-    if args.eval_batch_size: config["eval_batch_size"] = args.eval_batch_size
-    if args.visualize_worst is not None: config["visualize_worst"] = args.visualize_worst
-    if args.num_worst_samples is not None: config["num_worst_samples"] = args.num_worst_samples
-    if args.num_workers is not None: config["num_workers"] = args.num_workers
-    if args.validation_split is not None: config["validation_split"] = args.validation_split
-    if args.analyze_errors is not None: config["analyze_errors"] = args.analyze_errors
-    if args.visualize_confidence_comparison is not None: config["visualize_confidence_comparison"] = args.visualize_confidence_comparison
-    # Note: image_size is not directly used by evaluate_model or create_eval_dataloader
-
-    # Output directory is already determined and created in main
-    eval_output_dir = args.output_dir
-
-    # Save the effective config used for evaluation
-    config.save(os.path.join(eval_output_dir, "effective_eval_config.json"))
-    logger.info(f"Effective evaluation config saved to {eval_output_dir}/effective_eval_config.json")
-
-    # Load model using helper
-    model = _load_model_for_eval_predict(args.model_path, device, logger)
-    if model is None:
-        return # Error logged in helper
-
-    # Get id2label from loaded model
-    id2label = model.config.id2label
-
-    # Load dataset and create dataloader
-    try:
-        logger.info(f"Creating evaluation dataloader for dataset {config['dataset_name']}...")
-        eval_dataloader, _, _ = create_eval_dataloader(
-            dataset_dict_or_name=config["dataset_name"],
-            image_processor=None, # Processor is implicitly handled by model
-            config=config, # Pass config for dataloader settings like num_workers, batch_size
-            eval_batch_size=config["eval_batch_size"],
-            num_workers=config.get("num_workers", 4), # Use get with default
-            validation_split=config["validation_split"],
-            seed=config.get("seed", 42)
-        )
-        logger.info("Evaluation dataloader created.")
-    except Exception as e:
-        logger.error(f"Failed to create evaluation dataloader: {e}", exc_info=True)
-        return
-
-    # Run evaluation
-    logger.info(f"Evaluating model {args.model_path}...")
-    metrics = evaluate_model(
-        model=model,
-        eval_dataloader=eval_dataloader,
-        device=device,
-        output_dir=eval_output_dir,
-        id2label=id2label,
-        visualize_worst=config.get("visualize_worst", True),
-        num_worst_samples=config.get("num_worst_samples", 5),
-        analyze_errors=config.get("analyze_errors", False),
-        visualize_confidence_comparison=config.get("visualize_confidence_comparison", False),
-        logger=logger,
-        is_notebook=False
-    )
-
-    # Log and save metrics
-    logger.info("Evaluation metrics:")
-    for metric_name, metric_value in metrics.items():
-        logger.info(f"  {metric_name} = {metric_value:.4f}")
-
-    metrics_path = os.path.join(eval_output_dir, "evaluation_metrics.txt")
-    with open(metrics_path, "w") as f:
-        for metric_name, metric_value in metrics.items():
-            f.write(f"{metric_name} = {metric_value:.4f}\n")
-    logger.info(f"Evaluation metrics saved to {metrics_path}")
+    # Update config with any dataset-specific information
+    if args.dataset_name: 
+        config["dataset_name"] = args.dataset_name
+        
+    # Log completion
+    logger.info("\nDataset inspection completed successfully!")
+    logger.info(f"All results saved to: {output_dir}")
 
 def handle_verify_tiling(args: argparse.Namespace, logger: logging.Logger, config: Config, device: torch.device): # config and device loaded in main
     """Handles the 'verify-tiling' subcommand."""
@@ -565,7 +700,7 @@ def main():
         log_level = logging.DEBUG if hasattr(args, 'verbose') and args.verbose else logging.INFO
         # Use a command-specific log file name
         log_file_name = f"{args.command}.log"
-        logger = setup_logging(output_dir, log_level=log_level, log_file_name=log_file_name)
+        logger = setup_logging(output_dir, log_level=log_level, filename=log_file_name)
 
         logger.info(f"Executing command: {args.command}")
         logger.info(f"Arguments: {vars(args)}")
